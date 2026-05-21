@@ -1,3 +1,6 @@
+# Documentación del package.json
+
+```jsonc
 {
   // Nombre del proyecto
   "name": "robot-server",
@@ -14,3 +17,4 @@
     "mongoose": "^7.5.0"
   }
 }
+
