@@ -1,0 +1,8 @@
+{
+  "name": "robot-server",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0"
+  }
+}

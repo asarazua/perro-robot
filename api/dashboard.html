@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Robot Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; background: #0e0e0e; color: #e0e0e0; min-height: 100vh; padding: 2rem; }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #222; }
+    .title { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #888; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #3B6D11; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 2rem; }
+    .metric { background: #161616; border: 1px solid #222; border-radius: 10px; padding: 1rem 1.2rem; }
+    .metric-label { font-size: 11px; color: #666; margin-bottom: 6px; }
+    .metric-value { font-size: 26px; font-weight: 600; color: #fff; }
+
+    /* PANEL DE CONTROL */
+    .control-panel { background: #161616; border: 1px solid #222; border-radius: 10px; padding: 1.2rem; margin-bottom: 2rem; }
+    .control-title { font-size: 13px; color: #888; margin-bottom: 1.2rem; }
+
+    /* Grupos de comandos */
+    .cmd-group { margin-bottom: 1rem; }
+    .cmd-group-label { font-size: 11px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .comandos { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .cmd-btn { font-size: 12px; padding: 8px 18px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #e0e0e0; cursor: pointer; font-family: monospace; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    .cmd-btn:hover { background: #2a2a2a; transform: translateY(-1px); }
+    .cmd-btn:active { transform: translateY(0); }
+
+    /* Colores por tipo */
+    .btn-adelante  { border-color: #185FA5; color: #5ba3e0; }
+    .btn-atras     { border-color: #185FA5; color: #5ba3e0; }
+    .btn-stop      { border-color: #791F1F; color: #e05050; background: #1a0a0a; }
+    .btn-inicio    { border-color: #555; color: #aaa; }
+    .btn-flexionar { border-color: #0F6E56; color: #50c090; }
+    .btn-sentar    { border-color: #633806; color: #e0a050; }
+    .btn-estirar   { border-color: #5a2d82; color: #c080f0; }
+
+    .cmd-custom { display: flex; gap: 8px; margin-top: 1rem; }
+    .cmd-input { flex: 1; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid #333; background: #111; color: #e0e0e0; font-family: monospace; }
+    .cmd-send { font-size: 13px; padding: 7px 16px; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: #e0e0e0; cursor: pointer; font-family: monospace; }
+    .cmd-send:hover { background: #2a2a2a; }
+    .cmd-feedback { font-size: 12px; margin-top: 8px; height: 16px; }
+
+    /* GRID */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .section-title { font-size: 12px; color: #666; margin-bottom: 10px; }
+    .logs { display: flex; flex-direction: column; gap: 6px; }
+    .log-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 0.75rem 1rem; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; }
+    .log-item:hover { border-color: #333; }
+    .badge { font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+    .badge-movimiento { background: #0c1f33; color: #5ba3e0; }
+    .badge-bateria    { background: #2a1f08; color: #e0a050; }
+    .badge-error      { background: #2a0f0f; color: #e05050; }
+    .badge-sensor     { background: #0f2218; color: #50c090; }
+    .badge-default    { background: #1e1e1e; color: #888; }
+    .log-desc { font-size: 13px; color: #ccc; line-height: 1.5; }
+    .log-data { font-size: 11px; color: #555; margin-top: 3px; }
+    .log-time { font-size: 11px; color: #444; white-space: nowrap; }
+    .inst-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 0.75rem 1rem; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+    .inst-cmd { font-size: 13px; color: #ccc; }
+    .inst-estado { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+    .inst-estado.pendiente { background: #2a1f08; color: #e0a050; }
+    .inst-estado.ejecutada { background: #0f2218; color: #50c090; }
+    .inst-time { font-size: 11px; color: #444; }
+    .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+    .filter-btn { font-size: 12px; padding: 4px 14px; border-radius: 20px; border: 1px solid #333; background: transparent; color: #888; cursor: pointer; font-family: monospace; }
+    .filter-btn.active { background: #1e1e1e; color: #e0e0e0; border-color: #555; }
+    .refresh-btn { margin-left: auto; font-size: 12px; padding: 4px 16px; border-radius: 8px; border: 1px solid #333; background: transparent; color: #888; cursor: pointer; font-family: monospace; }
+    .empty { text-align: center; padding: 2rem; color: #444; font-size: 13px; }
+    #auto-badge { font-size: 11px; background: #0f2218; color: #50c090; padding: 2px 10px; border-radius: 20px; }
+    .divider { border: none; border-top: 1px solid #1e1e1e; margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <span class="title">🐶 robot / monitor & control</span>
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">conectando...</span>
+    <span id="auto-badge">auto-refresh 5s</span>
+  </div>
+</div>
+
+<!-- MÉTRICAS -->
+<div class="metrics">
+  <div class="metric"><div class="metric-label">total eventos</div><div class="metric-value" id="m-total">—</div></div>
+  <div class="metric"><div class="metric-label">movimientos</div><div class="metric-value" id="m-mov">—</div></div>
+  <div class="metric"><div class="metric-label">errores</div><div class="metric-value" id="m-err">—</div></div>
+  <div class="metric"><div class="metric-label">último evento</div><div class="metric-value" style="font-size:14px;padding-top:6px" id="m-last">—</div></div>
+</div>
+
+<!-- PANEL DE CONTROL -->
+<div class="control-panel">
+  <div class="control-title">📡 panel de control — enviar instrucción al robot</div>
+
+  <!-- Movimiento -->
+  <div class="cmd-group">
+    <div class="cmd-group-label">movimiento</div>
+    <div class="comandos">
+      <button class="cmd-btn btn-adelante" onclick="enviarComando('adelante')">▶ adelante</button>
+      <button class="cmd-btn btn-atras"    onclick="enviarComando('atras')">◀ atrás</button>
+      <button class="cmd-btn btn-stop"     onclick="enviarComando('stop')">⏹ stop</button>
+    </div>
+  </div>
+
+  <hr class="divider"/>
+
+  <!-- Postura -->
+  <div class="cmd-group">
+    <div class="cmd-group-label">postura</div>
+    <div class="comandos">
+      <button class="cmd-btn btn-flexionar" onclick="enviarComando('flexionar')">⬇ flexionar</button>
+      <button class="cmd-btn btn-sentar"    onclick="enviarComando('sentar')">🐾 sentar</button>
+      <button class="cmd-btn btn-estirar"   onclick="enviarComando('estirar')">⬆ estirar</button>
+      <button class="cmd-btn btn-inicio"    onclick="enviarComando('inicio')">⟳ posición 0</button>
+    </div>
+  </div>
+
+  <hr class="divider"/>
+
+  <!-- Personalizado -->
+  <div class="cmd-custom">
+    <input class="cmd-input" id="cmd-input" placeholder="comando personalizado..." />
+    <button class="cmd-send" onclick="enviarPersonalizado()">enviar →</button>
+  </div>
+  <div class="cmd-feedback" id="cmd-feedback"></div>
+</div>
+
+<!-- GRID LOGS + INSTRUCCIONES -->
+<div class="grid">
+  <div>
+    <div class="controls">
+      <button class="filter-btn active" onclick="filtrar('todos', this)">todos</button>
+      <button class="filter-btn" onclick="filtrar('movimiento', this)">movimiento</button>
+      <button class="filter-btn" onclick="filtrar('error', this)">error</button>
+      <button class="filter-btn" onclick="filtrar('sensor', this)">sensor</button>
+      <button class="refresh-btn" onclick="cargarDatos()">↻</button>
+    </div>
+    <div class="section-title">eventos del robot</div>
+    <div class="logs" id="logs"></div>
+  </div>
+  <div>
+    <div style="margin-bottom:10px;height:32px;"></div>
+    <div class="section-title">instrucciones enviadas</div>
+    <div class="logs" id="instrucciones"></div>
+  </div>
+</div>
+
+<script>
+  let todosLogs = [];
+  let filtroActivo = 'todos';
+
+  function formatTiempo(fecha) {
+    const d = new Date(fecha);
+    const diff = Math.floor((Date.now() - d) / 1000);
+    if (diff < 60) return 'hace ' + diff + 's';
+    if (diff < 3600) return 'hace ' + Math.floor(diff / 60) + 'm';
+    return d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function badgeClass(tipo) {
+    if (!tipo) return 'badge-default';
+    const t = tipo.toLowerCase();
+    if (t.includes('movimiento')) return 'badge-movimiento';
+    if (t.includes('bateria') || t.includes('batería')) return 'badge-bateria';
+    if (t.includes('error')) return 'badge-error';
+    if (t.includes('sensor')) return 'badge-sensor';
+    return 'badge-default';
+  }
+
+  function renderLogs(logs) {
+    const c = document.getElementById('logs');
+    if (!logs.length) { c.innerHTML = '<div class="empty">No hay eventos aún</div>'; return; }
+    c.innerHTML = logs.map(log => {
+      const datos = log.datos ? Object.entries(log.datos).map(([k,v]) => k+': '+v).join(' · ') : '';
+      return `<div class="log-item">
+        <span class="badge ${badgeClass(log.tipo)}">${log.tipo || 'evento'}</span>
+        <div>
+          <div class="log-desc">${log.descripcion || '—'}</div>
+          ${datos ? '<div class="log-data">'+datos+'</div>' : ''}
+        </div>
+        <span class="log-time">${formatTiempo(log.fecha)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderInstrucciones(instrucciones) {
+    const c = document.getElementById('instrucciones');
+    if (!instrucciones.length) { c.innerHTML = '<div class="empty">No hay instrucciones aún</div>'; return; }
+    c.innerHTML = instrucciones.map(inst => `
+      <div class="inst-item">
+        <span class="inst-cmd">▸ ${inst.comando}</span>
+        <span class="inst-estado ${inst.estado}">${inst.estado}</span>
+        <span class="inst-time">${formatTiempo(inst.fecha)}</span>
+      </div>`).join('');
+  }
+
+  function filtrar(tipo, btn) {
+    filtroActivo = tipo;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filtrados = tipo === 'todos' ? todosLogs : todosLogs.filter(l => l.tipo && l.tipo.toLowerCase().includes(tipo));
+    renderLogs(filtrados);
+  }
+
+  async function enviarComando(comando) {
+    const fb = document.getElementById('cmd-feedback');
+    try {
+      await fetch('/instruccion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comando, parametros: {} })
+      });
+      fb.textContent = '✓ Instrucción "' + comando + '" enviada al robot';
+      fb.style.color = '#50c090';
+      setTimeout(() => fb.textContent = '', 3000);
+      cargarDatos();
+    } catch(e) {
+      fb.textContent = '✗ Error al enviar instrucción';
+      fb.style.color = '#e05050';
+    }
+  }
+
+  function enviarPersonalizado() {
+    const input = document.getElementById('cmd-input');
+    const cmd = input.value.trim();
+    if (!cmd) return;
+    enviarComando(cmd);
+    input.value = '';
+  }
+
+  document.getElementById('cmd-input').addEventListener('keypress', e => {
+    if (e.key === 'Enter') enviarPersonalizado();
+  });
+
+  async function cargarDatos() {
+    try {
+      const [resLogs, resInst] = await Promise.all([fetch('/logs'), fetch('/instrucciones')]);
+      todosLogs = await resLogs.json();
+      const instrucciones = await resInst.json();
+      document.getElementById('dot').style.background = '#3B6D11';
+      document.getElementById('status-text').textContent = 'conectado';
+      document.getElementById('m-total').textContent = todosLogs.length;
+      document.getElementById('m-mov').textContent = todosLogs.filter(l => l.tipo && l.tipo.includes('movimiento')).length;
+      document.getElementById('m-err').textContent = todosLogs.filter(l => l.tipo && l.tipo.includes('error')).length;
+      document.getElementById('m-last').textContent = todosLogs.length ? formatTiempo(todosLogs[0].fecha) : '—';
+      const filtrados = filtroActivo === 'todos' ? todosLogs : todosLogs.filter(l => l.tipo && l.tipo.toLowerCase().includes(filtroActivo));
+      renderLogs(filtrados);
+      renderInstrucciones(instrucciones);
+    } catch(e) {
+      document.getElementById('dot').style.background = '#A32D2D';
+      document.getElementById('status-text').textContent = 'error de conexión';
+    }
+  }
+
+  cargarDatos();
+  setInterval(cargarDatos, 5000);
+</script>
+</body>
+</html>
