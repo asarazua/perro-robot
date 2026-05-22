@@ -1,0 +1,380 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <BluetoothSerial.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+#include <HTTPClient.h> 
+
+// --- INICIO: CONFIGURACIÓN Y VARIABLES ---
+BluetoothSerial SerialBT;
+WebServer server(80);
+Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver();
+
+const char* ssid = "Aston_ESP32_WIFI";
+const char* password = "12345678";
+
+// IP de tu Droplet de DigitalOcean
+const char* serverUrl = "http://159.65.228.0:3000"; 
+
+int ch[9] = {0, 1, 2, 9, 4, 5, 6, 7, 8}; 
+int centro[9]    = {1500, 1500, 1500, 1500, 1700, 1500, 1500, 1400, 1400};
+int invertido[9] = {1, 0, 0, 1, 1, 0, 0, 1, 0};
+int currentPos[9]= {1500, 1500, 1500, 1500, 1700, 1500, 1500, 1400, 1400};
+
+boolean flag = true; 
+char command = 'S';
+char lastCommand = ' ';
+
+int FDI=1500, TDI=1500, FDD=1500, TDD=1500, FTI=1700, TTI=1500, FTD=1500, TTD_V=1400, HEAD=1400;
+
+struct MoveTask { int target; int speed; void (*callback)(); bool active; };
+MoveTask tasks[9];
+// --- FIN: CONFIGURACIÓN Y VARIABLES ---
+
+// --- INICIO: COMUNICACIÓN CON DIGITALOCEAN (MONGODB) ---
+void postEvento(String tipo, String descripcion) {
+  if(WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(String(serverUrl) + "/evento"); 
+    http.addHeader("Content-Type", "application/json");
+    String json = "{\"tipo\":\"" + tipo + "\",\"descripcion\":\"" + descripcion + "\"}"; 
+    http.POST(json);
+    http.end();
+  }
+}
+
+void addLog(String tipo, String desc) {
+  postEvento(tipo, desc);
+  Serial.println("Log enviado a MongoDB: " + desc);
+}
+// --- FIN: COMUNICACIÓN CON DIGITALOCEAN (MONGODB) ---
+
+// --- INICIO: FUNCIONES DE BAJO NIVEL ---
+int usToPCA(int us) { return map(us, 500, 2500, 102, 512); }
+int corregir(int id, int v) {
+  if (invertido[id]) return centro[id] - (v - centro[id]);
+  return v;
+}
+void writeServo(int id, int us) {
+  currentPos[id] = us;
+  pca.setPWM(ch[id], 0, usToPCA(corregir(id, us)));
+}
+void Move(int id, int target, int speed, void(*cb)() = NULL) {
+  tasks[id].target = target;
+  tasks[id].speed = speed;
+  tasks[id].callback = cb;
+  tasks[id].active = true;
+}
+void fin_ciclo() { flag = true; }
+
+void mostrarMenu() {
+  Serial.println("\n--- MENU DE MOVIMIENTOS ---");
+  Serial.println("F: Adelante | B: Atras | H: Sentado");
+  Serial.println("J: Flexion  | K: Estirado | P: Inicio");
+  Serial.println("M: Mostrar IP del ESP32");
+  Serial.println("?: Ayuda");
+  Serial.println("---------------------------\n");
+}
+
+void mostrarIP() {
+  Serial.println("\n--- IP DEL ESP32 ---");
+  Serial.print("IP en la red: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+  Serial.print("SSID:         ");
+  Serial.println(WiFi.SSID());
+  Serial.print("Señal (RSSI): ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+  Serial.println("--------------------\n");
+}
+// --- FIN: FUNCIONES DE BAJO NIVEL ---
+
+// --- INICIO: PROTOTIPOS ---
+void step_F2(); void step_F3(); void step_F4(); void step_F5();
+void step_B2(); void step_B3(); void step_B4();
+// --- FIN: PROTOTIPOS ---
+
+// --- INICIO: MODULO ADELANTE ---
+void adelante() {
+  if (!flag) return;
+  flag = false;
+  int v_lenta = 25;
+  Move(1, TDI - 250, v_lenta); 
+  Move(0, FDI - 300, v_lenta, step_F2); 
+}
+void step_F2() {
+  int v_lenta = 25;
+  Move(1, TDI, v_lenta);
+  Move(7, TTD_V + 250, v_lenta);
+  Move(6, FTD + 300, v_lenta, step_F3);
+}
+void step_F3() {
+  int v_lenta = 25;
+  Move(7, TTD_V, v_lenta);
+  Move(3, TDD - 250, v_lenta);
+  Move(2, FDD + 300, v_lenta, step_F4);
+}
+void step_F4() {
+  int v_lenta = 25;
+  Move(3, TDD, v_lenta);
+  Move(5, TTI + 250, v_lenta);
+  Move(4, FTI - 300, v_lenta, step_F5);
+}
+void step_F5() {
+  int v_lenta = 25;
+  Move(5, TTI, v_lenta);
+  Move(0, FDI, v_lenta);
+  Move(2, FDD, v_lenta);
+  Move(4, FTI, v_lenta);
+  Move(6, FTD, v_lenta, fin_ciclo); 
+}
+// --- FIN: MODULO ADELANTE ---
+
+// --- INICIO: MODULO ATRAS ---
+void atras() {
+  if (!flag) return;
+  flag = false;
+  int v_atras = 25; 
+  Move(0, FDI + 200, v_atras);
+  Move(4, FTI + 200, v_atras);
+  Move(2, FDD - 200, v_atras);
+  Move(6, FTD - 200, v_atras, step_B2);
+}
+void step_B2() {
+  Move(1, TDI - 200, 30); 
+  Move(7, TTD_V + 200, 30);
+  Move(0, FDI, 30);
+  Move(6, FTD, 30, step_B3);
+}
+void step_B3() {
+  Move(1, TDI, 30);
+  Move(7, TTD_V, 30);
+  Move(3, TDD - 200, 30);
+  Move(5, TTI + 200, 30);
+  Move(2, FDD, 30);
+  Move(4, FTI, 30, step_B4);
+}
+void step_B4() {
+  Move(3, TDD, 30);
+  Move(5, TTI, 30);
+  Move(8, HEAD, 30, fin_ciclo);
+}
+// --- FIN: MODULO ATRAS ---
+
+// --- INICIO: MODULO SENTADO ---
+void sentado() {
+  if (!flag) return;
+  flag = false;
+  int v_mov = 15;
+  Move(4, FTI - 350, v_mov);
+  Move(5, TTI - 400, v_mov);
+  Move(6, FTD - 350, v_mov); 
+  Move(7, TTD_V - 400, v_mov, fin_ciclo); 
+}
+// --- FIN: MODULO SENTADO ---
+
+// --- INICIO: MODULO FLEXION ---
+void flexion() {
+  if (!flag) return; 
+  flag = false;
+  int v_lenta = 12; 
+  Move(0, FDI + 350, v_lenta);
+  Move(2, FDD + 500, v_lenta);
+  Move(1, TDI + 200, v_lenta);
+  Move(3, TDD - 400, v_lenta);
+  Move(8, HEAD + 200, v_lenta, fin_ciclo); 
+}
+// --- FIN: MODULO FLEXION ---
+
+// --- INICIO: MODULO ESTIRADO ---
+void estirado() {
+  if (!flag) return;
+  flag = false;
+  int v_estira = 10; 
+  Move(0, FDI + 400, v_estira); 
+  Move(2, FDD + 400, v_estira); 
+  Move(4, FTI - 400, v_estira); 
+  Move(6, FTD - 400, v_estira); 
+  Move(1, TDI + 300, v_estira);
+  Move(3, TDD - 300, v_estira);
+  Move(5, TTI + 300, v_estira);
+  Move(7, TTD_V + 300, v_estira, fin_ciclo);
+}
+// --- FIN: MODULO ESTIRADO ---
+
+// --- INICIO: RESET Y POSE INICIO ---
+void pose_inicio() {
+  for (int i = 0; i < 9; i++) tasks[i].active = false; 
+  int v_retorno = 15;
+  Move(0, FDI, v_retorno);
+  Move(1, TDI, v_retorno);
+  Move(2, FDD, v_retorno);
+  Move(3, TDD, v_retorno);
+  Move(4, FTI, v_retorno);
+  Move(5, TTI, v_retorno);
+  Move(6, FTD, v_retorno);
+  Move(7, TTD_V, v_retorno);
+  Move(8, HEAD, v_retorno, fin_ciclo); 
+}
+// --- FIN: RESET Y POSE INICIO ---
+
+// --- INICIO: SISTEMA OPERATIVO Y COMUNICACION ---
+void handlePostInstruccion() {
+  if (server.hasArg("plain")) {
+    String body = server.arg("plain");
+    if (body.indexOf("adelante") > 0)       command = 'F';
+    else if (body.indexOf("atras") > 0)     command = 'B';
+    else if (body.indexOf("sentar") > 0)    command = 'H';
+    else if (body.indexOf("flexionar") > 0) command = 'J';
+    else if (body.indexOf("estirar") > 0)   command = 'K';
+    else if (body.indexOf("inicio") > 0)    command = 'P';
+    else if (body.indexOf("stop") > 0)      command = 'S';
+    else if (body.indexOf("ip") > 0)        command = 'M';
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+  }
+}
+
+void checkPendientes() {
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck < 3000) return; 
+  lastCheck = millis();
+
+  if(WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.setTimeout(5000);  // mas tiempo
+  http.begin(String(serverUrl) + "/instruccion/pendiente"); 
+  int httpCode = http.GET();
+  
+  if (httpCode == 200) {
+    String payload = http.getString();
+    Serial.println("Instruccion recibida: " + payload); // para debug
+    
+    // buscar el comando en el JSON
+    int idx = payload.indexOf("\"comando\":\"");
+    if (idx > 0) {
+      int start = idx + 11;
+      int end = payload.indexOf("\"", start);
+      String cmd = payload.substring(start, end);
+      
+      Serial.println("Comando extraido: " + cmd);
+      
+      if (cmd == "adelante")       command = 'F';
+      else if (cmd == "atras")     command = 'B';
+      else if (cmd == "sentar")    command = 'H';
+      else if (cmd == "flexionar") command = 'J';
+      else if (cmd == "estirar")   command = 'K';
+      else if (cmd == "inicio")    command = 'P';
+      else if (cmd == "stop")      command = 'S';
+      else if (cmd == "ip")        command = 'M';
+    }
+  } else {
+    Serial.println("Error HTTP: " + String(httpCode));
+  }
+  http.end();
+}
+
+void updateServos() {
+  static unsigned long last = 0;
+  if (millis() - last < 15) return;
+  last = millis();
+  for (int i = 0; i < 9; i++) {
+    if (!tasks[i].active) continue;
+    if (currentPos[i] < tasks[i].target) {
+      currentPos[i] += tasks[i].speed;
+      if (currentPos[i] > tasks[i].target) currentPos[i] = tasks[i].target;
+    } else if (currentPos[i] > tasks[i].target) {
+      currentPos[i] -= tasks[i].speed;
+      if (currentPos[i] < tasks[i].target) currentPos[i] = tasks[i].target;
+    }
+    writeServo(i, currentPos[i]);
+    if (currentPos[i] == tasks[i].target) {
+      tasks[i].active = false;
+      if (tasks[i].callback != NULL) {
+        void (*cb)() = tasks[i].callback;
+        tasks[i].callback = NULL;
+        cb();
+      }
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  SerialBT.begin("Aston_ESP32");
+  WiFi.mode(WIFI_AP_STA); 
+  WiFi.begin("sjdcp", "sjdcp1604"); 
+
+  Serial.print("Conectando a WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" conectado!");
+  
+  server.on("/instruccion", HTTP_POST, handlePostInstruccion); 
+  server.begin();
+
+  Wire.begin(21, 22);
+  pca.begin();
+  pca.setPWMFreq(50);
+  delay(1000);
+
+  // Mostrar IP al arrancar
+  mostrarIP();
+  
+  addLog("sensor", "Sistema Aston Iniciado / Pose Inicial");
+  pose_inicio();
+}
+
+void loop() {
+  if (SerialBT.available()) {
+    command = SerialBT.read();
+  } else if (Serial.available()) {
+    char t = Serial.read();
+    if (t != '\n' && t != '\r') command = t;
+  }
+  
+  server.handleClient();
+  checkPendientes(); 
+
+  // --- CONTROL EXCLUSIVO DE LOGS POR CAMBIO DE COMANDO ---
+  if (command != lastCommand) {
+    Serial.print("Nuevo comando detectado: "); Serial.println(command);
+    switch (command) {
+      case 'F': addLog("movimiento", "Caminando adelante"); break;
+      case 'B': addLog("movimiento", "Caminando atras"); break;
+      case 'J': addLog("movimiento", "Realizando flexion"); break;
+      case 'H': addLog("movimiento", "Robot sentado"); break;
+      case 'K': addLog("movimiento", "Modo estirado"); break;
+      case 'P': 
+      case 'I': addLog("sensor", "Restaurando Pose Inicial"); break;
+      case 'S': addLog("movimiento", "Robot Parado / En espera"); break;
+      case 'M': mostrarIP(); break;
+      case '?': mostrarMenu(); break;
+    }
+    lastCommand = command;
+  }
+
+  // --- EJECUCIÓN CONTINUA DE LOS MOTORES ---
+  if (flag && command != 'S') {
+    switch (command) {
+      case 'F': adelante(); break;
+      case 'B': atras(); break;
+      case 'J': flexion(); break;
+      case 'H': sentado(); break;
+      case 'K': estirado(); break;
+      case 'P': 
+      case 'I': pose_inicio(); break;
+      case 'M': command = 'S'; break;
+      case '?': command = 'S'; break; 
+      default:  command = 'S'; break;
+    }
+  }
+  
+  updateServos();
+  delay(1);
+}
+// --- FIN: SISTEMA OPERATIVO Y COMUNICACION ---
