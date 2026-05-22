@@ -28,5 +28,8 @@ Servidor en la nube responsable de recibir eventos del robot, almacenarlos en Mo
 | estirar | El robot se estira |
 | inicio | Posición inicial |
 
-## Responsable
-Andrea Sarazua — Servidor y Servicios en la Nube
+## Responsables
+Andrea María Sarazúa Roca
+Sergio Josue Daniel Cúmez Pichiyá
+Meily Sucely Chonay Cán
+Wilson Armando Felipe Jerónimo
