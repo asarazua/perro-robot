@@ -1,0 +1,367 @@
+@@ -0,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Robot Monitor</title>
+  <style>
+    /* Reseteo global de márgenes, rellenos y cálculo de tamaño basado en bordes */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Estilo del cuerpo: Fuente tipográfica estilo terminal, fondo oscuro y espaciado general */
+    body { font-family: 'Courier New', monospace; background: #0e0e0e; color: #e0e0e0; min-height: 100vh; padding: 2rem; }
+    /* Contenedor de la barra superior alineado horizontalmente con espacio intermedio */
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #222; }
+    /* Estilos de formato para el título de la aplicación web */
+    .title { font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+    /* Contenedor para el indicador de estado de conexión al servidor */
+    .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #888; }
+    /* Círculo verde indicador de conectividad con animación intermitente */
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #3B6D11; animation: pulse 2s infinite; }
+    /* Definición del efecto de parpadeo (pulso) mediante opacidad variable */
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    /* Cuadrícula adaptable para organizar las tarjetas de métricas numéricas */
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 2rem; }
+    /* Estilo individual para cada tarjeta contenedora de métricas */
+    .metric { background: #161616; border: 1px solid #222; border-radius: 10px; padding: 1rem 1.2rem; }
+    /* Etiqueta descriptiva pequeña y gris dentro de la tarjeta de métrica */
+    .metric-label { font-size: 11px; color: #666; margin-bottom: 6px; }
+    /* Texto numérico grande y destacado para visualizar el valor de la métrica */
+    .metric-value { font-size: 26px; font-weight: 600; color: #fff; }
+
+    /* PANEL DE CONTROL */
+    /* Caja base para agrupar los botones de control remoto del robot */
+    .control-panel { background: #161616; border: 1px solid #222; border-radius: 10px; padding: 1.2rem; margin-bottom: 2rem; }
+    /* Encabezado secundario para identificar la zona de mandos de la API */
+    .control-title { font-size: 13px; color: #888; margin-bottom: 1.2rem; }
+
+    /* Grupos de comandos */
+    /* Contenedor para separar las categorías de botones (movimientos o posturas) */
+    .cmd-group { margin-bottom: 1rem; }
+    /* Subtítulo estético en mayúsculas para las categorías de comandos */
+    .cmd-group-label { font-size: 11px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    /* Caja flexible que alinea y envuelve los botones cuando el espacio es reducido */
+    .comandos { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* Botón base para interactuar con la API del servidor backend */
+    .cmd-btn { font-size: 12px; padding: 8px 18px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #e0e0e0; cursor: pointer; font-family: monospace; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    /* Efecto visual al pasar el cursor sobre los botones de comando (cambio de fondo y leve elevación) */
+    .cmd-btn:hover { background: #2a2a2a; transform: translateY(-1px); }
+    /* Efecto de hundimiento cuando el usuario presiona físicamente el botón */
+    .cmd-btn:active { transform: translateY(0); }
+
+    /* Colores por tipo */
+    /* Variantes cromáticas para los botones según su criticidad o función */
+    .btn-adelante  { border-color: #185FA5; color: #5ba3e0; }
+    .btn-atras     { border-color: #185FA5; color: #5ba3e0; }
+    .btn-stop      { border-color: #791F1F; color: #e05050; background: #1a0a0a; }
+    .btn-inicio    { border-color: #555; color: #aaa; }
+    .btn-flexionar { border-color: #0F6E56; color: #50c090; }
+    .btn-sentar    { border-color: #633806; color: #e0a050; }
+    .btn-estirar   { border-color: #5a2d82; color: #c080f0; }
+
+    /* Estructura para el envío manual de comandos de depuración mediante texto */
+    .cmd-custom { display: flex; gap: 8px; margin-top: 1rem; }
+    /* Campo de entrada de texto oscuro donde se digita la orden a enviar */
+    .cmd-input { flex: 1; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid #333; background: #111; color: #e0e0e0; font-family: monospace; }
+    /* Botón para despachar la instrucción escrita en el input */
+    .cmd-send { font-size: 13px; padding: 7px 16px; border-radius: 8px; border: 1px solid #333; background: #1e1e1e; color: #e0e0e0; cursor: pointer; font-family: monospace; }
+    /* Cambio de fondo en el botón de envío al pasar el mouse por encima */
+    .cmd-send:hover { background: #2a2a2a; }
+    /* Contenedor reservado para renderizar mensajes de éxito o error al presionar botones */
+    .cmd-feedback { font-size: 12px; margin-top: 8px; height: 16px; }
+
+    /* GRID */
+    /* Distribución en dos columnas principales para balancear logs de eventos e instrucciones */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    /* Media query para unificar el layout a una sola columna si la pantalla es menor a 800px */
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    /* Títulos para las secciones inferiores de bitácoras */
+    .section-title { font-size: 12px; color: #666; margin-bottom: 10px; }
+    /* Contenedor vertical apilado para renderizar dinámicamente cada registro */
+    .logs { display: flex; flex-direction: column; gap: 6px; }
+    /* Tarjeta interna de log formateada en tres secciones mediante CSS Grid */
+    .log-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 0.75rem 1rem; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; }
+    /* Resaltado del borde de un log al posicionarse sobre él */
+    .log-item:hover { border-color: #333; }
+    /* Etiquetas de tipo de log estilizadas con bordes circulares */
+    .badge { font-size: 11px; padding: 2px 10px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+    /* Códigos de colores específicos para clasificar visualmente el tipo de log proveniente de MongoDB */
+    .badge-movimiento { background: #0c1f33; color: #5ba3e0; }
+    .badge-bateria    { background: #2a1f08; color: #e0a050; }
+    .badge-error      { background: #2a0f0f; color: #e05050; }
+    .badge-sensor     { background: #0f2218; color: #50c090; }
+    .badge-default    { background: #1e1e1e; color: #888; }
+    /* Formato de texto para el bloque descriptivo de la acción del robot */
+    .log-desc { font-size: 13px; color: #ccc; line-height: 1.5; }
+    /* Estilo secundario opcional para parámetros adicionales dentro de la bitácora */
+    .log-data { font-size: 11px; color: #555; margin-top: 3px; }
+    /* Tipografía gris reducida fijada para representar la hora del suceso */
+    .log-time { font-size: 11px; color: #444; white-space: nowrap; }
+    /* Tarjeta contenedora de las órdenes registradas en el historial de comandos de la API */
+    .inst-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 0.75rem 1rem; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+    /* Estilo del texto que expone la palabra clave del comando enviado */
+    .inst-cmd { font-size: 13px; color: #ccc; }
+    /* Formato general para el estado de ejecución (pendiente / ejecutada) */
+    .inst-estado { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+    /* Colores correspondientes según si el comando sigue en espera en el backend o si fue absorbido por el ESP32 */
+    .inst-estado.pendiente { background: #2a1f08; color: #e0a050; }
+    .inst-estado.ejecutada { background: #0f2218; color: #50c090; }
+    /* Estilo del texto temporal para el historial de instrucciones */
+    .inst-time { font-size: 11px; color: #444; }
+    /* Contenedor flexible superior que alinea los botones de filtrado rápido */
+    .controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+    /* Botones ovalados interactivos para discriminar logs específicos en pantalla */
+    .filter-btn { font-size: 12px; padding: 4px 14px; border-radius: 20px; border: 1px solid #333; background: transparent; color: #888; cursor: pointer; font-family: monospace; }
+    /* Clase que resalta visualmente cuál filtro está activo actualmente en la vista frontend */
+    .filter-btn.active { background: #1e1e1e; color: #e0e0e0; border-color: #555; }
+    /* Botón con el símbolo de recarga manual posicionado al extremo derecho */
+    .refresh-btn { margin-left: auto; font-size: 12px; padding: 4px 16px; border-radius: 8px; border: 1px solid #333; background: transparent; color: #888; cursor: pointer; font-family: monospace; }
+    /* Formato de texto para indicar ausencia temporal de registros en las colecciones */
+    .empty { text-align: center; padding: 2rem; color: #444; font-size: 13px; }
+    /* Placa verde informativa sobre la tasa de refresco automático fijada por javascript */
+    #auto-badge { font-size: 11px; background: #0f2218; color: #50c090; padding: 2px 10px; border-radius: 20px; }
+    /* Separador minimalista horizontal para segmentar las áreas de mandos */
+    .divider { border: none; border-top: 1px solid #1e1e1e; margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <span class="title">🐶 robot / monitor & control</span>
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">conectando...</span>
+    <span id="auto-badge">auto-refresh 5s</span>
+  </div>
+</div>
+
+<div class="metrics">
+  <div class="metric"><div class="metric-label">total eventos</div><div class="metric-value" id="m-total">—</div></div>
+  <div class="metric"><div class="metric-label">movimientos</div><div class="metric-value" id="m-mov">—</div></div>
+  <div class="metric"><div class="metric-label">errores</div><div class="metric-value" id="m-err">—</div></div>
+  <div class="metric"><div class="metric-label">último evento</div><div class="metric-value" style="font-size:14px;padding-top:6px" id="m-last">—</div></div>
+</div>
+
+<div class="control-panel">
+  <div class="control-title">📡 panel de control — enviar instrucción al robot</div>
+
+  <div class="cmd-group">
+    <div class="cmd-group-label">movimiento</div>
+    <div class="comandos">
+      <button class="cmd-btn btn-adelante" onclick="enviarComando('adelante')">▶ adelante</button>
+      <button class="cmd-btn btn-atras"    onclick="enviarComando('atras')">◀ atrás</button>
+      <button class="cmd-btn btn-stop"     onclick="enviarComando('stop')">⏹ stop</button>
+    </div>
+  </div>
+
+  <hr class="divider"/>
+
+  <div class="cmd-group">
+    <div class="cmd-group-label">postura</div>
+    <div class="comandos">
+      <button class="cmd-btn btn-flexionar" onclick="enviarComando('flexionar')">⬇ flexionar</button>
+      <button class="cmd-btn btn-sentar"    onclick="enviarComando('sentar')">🐾 sentar</button>
+      <button class="cmd-btn btn-estirar"   onclick="enviarComando('estirar')">⬆ estirar</button>
+      <button class="cmd-btn btn-inicio"    onclick="enviarComando('inicio')">⟳ posición 0</button>
+    </div>
+  </div>
+
+  <hr class="divider"/>
+
+  <div class="cmd-custom">
+    <input class="cmd-input" id="cmd-input" placeholder="comando personalizado..." />
+    <button class="cmd-send" onclick="enviarPersonalizado()">enviar →</button>
+  </div>
+  <div class="cmd-feedback" id="cmd-feedback"></div>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="controls">
+      <button class="filter-btn active" onclick="filtrar('todos', this)">todos</button>
+      <button class="filter-btn" onclick="filtrar('movimiento', this)">movimiento</button>
+      <button class="filter-btn" onclick="filtrar('error', this)">error</button>
+      <button class="filter-btn" onclick="filtrar('sensor', this)">sensor</button>
+      <button class="refresh-btn" onclick="cargarDatos()">↻</button>
+    </div>
+    <div class="section-title">eventos del robot</div>
+    <div class="logs" id="logs"></div>
+  </div>
+  <div>
+    <div style="margin-bottom:10px;height:32px;"></div>
+    <div class="section-title">instrucciones enviadas</div>
+    <div class="logs" id="instrucciones"></div>
+  </div>
+</div>
+
+<script>
+  // Arreglo global de memoria temporal para retener los logs descargados del servidor
+  let todosLogs = [];
+  // Estado inicial por defecto de los filtros de la interfaz
+  let filtroActivo = 'todos';
+
+  /**
+   * Calcula el diferencial de tiempo relativo entre la fecha actual y el suceso.
+   * Devuelve un formato amigable estilo: hace 5s, hace 3m o la hora exacta.
+   */
+  function formatTiempo(fecha) {
+    const d = new Date(fecha);
+    const diff = Math.floor((Date.now() - d) / 1000);
+    if (diff < 60) return 'hace ' + diff + 's';
+    if (diff < 3600) return 'hace ' + Math.floor(diff / 60) + 'm';
+    return d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /**
+   * Mapea el string del tipo de evento con su respectiva clase CSS de color.
+   * Sirve para pintar de forma diferente los errores, movimientos y sensores.
+   */
+  function badgeClass(tipo) {
+    if (!tipo) return 'badge-default';
+    const t = tipo.toLowerCase();
+    if (t.includes('movimiento')) return 'badge-movimiento';
+    if (t.includes('bateria') || t.includes('batería')) return 'badge-bateria';
+    if (t.includes('error')) return 'badge-error';
+    if (t.includes('sensor')) return 'badge-sensor';
+    return 'badge-default';
+  }
+
+  /**
+   * Itera sobre un arreglo de objetos JSON e inyecta bloques HTML estructurados
+   * dentro del nodo del DOM correspondiente a los eventos del robot.
+   */
+  function renderLogs(logs) {
+    const c = document.getElementById('logs');
+    // Valida si la colección de logs está vacía para renderizar un aviso visual intermedio
+    if (!logs.length) { c.innerHTML = '<div class="empty">No hay eventos aún</div>'; return; }
+    // Mapea cada fila de datos transformándolo en elementos de bloque con clases CSS dinámicas
+    c.innerHTML = logs.map(log => {
+      const datos = log.datos ? Object.entries(log.datos).map(([k,v]) => k+': '+v).join(' · ') : '';
+      return `<div class="log-item">
+        <span class="badge ${badgeClass(log.tipo)}">${log.tipo || 'evento'}</span>
+        <div>
+          <div class="log-desc">${log.descripcion || '—'}</div>
+          ${datos ? '<div class="log-data">'+datos+'</div>' : ''}
+        </div>
+        <span class="log-time">${formatTiempo(log.fecha)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  /**
+   * Procesa la bitácora de instrucciones despachadas e inyecta los ítems
+   * reflejando si la orden se encuentra aún en estado pendiente o completada.
+   */
+  function renderInstrucciones(instrucciones) {
+    const c = document.getElementById('instrucciones');
+    if (!instrucciones.length) { c.innerHTML = '<div class="empty">No hay instrucciones aún</div>'; return; }
+    c.innerHTML = instrucciones.map(inst => `
+      <div class="inst-item">
+        <span class="inst-cmd">▸ ${inst.comando}</span>
+        <span class="inst-estado ${inst.estado}">${inst.estado}</span>
+        <span class="inst-time">${formatTiempo(inst.fecha)}</span>
+      </div>`).join('');
+  }
+
+  /**
+   * Intercepta la selección de filtros, remueve las clases activas previas
+   * y corre un algoritmo de filtrado sobre el array global en memoria.
+   */
+  function filtrar(tipo, btn) {
+    filtroActivo = tipo;
+    // Remueve el resaltado visual de todos los botones de filtro
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    // Añade el estado activo únicamente al botón presionado por el usuario
+    btn.classList.add('active');
+    // Filtra basándose en si la categoría coincide parcialmente con el tipo seleccionado
+    const filtrados = tipo === 'todos' ? todosLogs : todosLogs.filter(l => l.tipo && l.tipo.toLowerCase().includes(tipo));
+    // Redibuja la lista de logs aplicando el filtro seleccionado
+    renderLogs(filtrados);
+  }
+
+  /**
+   * Orquesta peticiones HTTP asíncronas de tipo POST hacia la API del servidor
+   * mandando en formato JSON la instrucción que el ESP32 debe leer.
+   */
+  async function enviarComando(comando) {
+    const fb = document.getElementById('cmd-feedback');
+    try {
+      // Realiza la petición Fetch hacia la ruta relativa /instruccion
+      await fetch('/instruccion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comando, parametros: {} })
+      });
+      // Notifica al usuario en pantalla sobre el éxito de la comunicación asíncrona
+      fb.textContent = '✓ Instrucción "' + comando + '" enviada al robot';
+      fb.style.color = '#50c090';
+      // Remueve el texto de éxito automáticamente después de transcurridos 3 segundos
+      setTimeout(() => fb.textContent = '', 3000);
+      // Fuerza una recarga de datos inmediata para refrescar el historial en la pantalla
+      cargarDatos();
+    } catch(e) {
+      // Manejo de excepciones en caso de caída del servidor o bloqueos de red
+      fb.textContent = '✗ Error al enviar instrucción';
+      fb.style.color = '#e05050';
+    }
+  }
+
+  /**
+   * Extrae la cadena de texto limpia del campo input manual, valida que
+   * contenga datos válidos y la transfiere a la función central de envíos.
+   */
+  function enviarPersonalizado() {
+    const input = document.getElementById('cmd-input');
+    const cmd = input.value.trim();
+    if (!cmd) return; // Rompe la ejecución si el string está vacío
+    enviarComando(cmd);
+    input.value = ''; // Limpia el input para que quede listo para el siguiente comando
+  }
+
+  // Escucha pulsaciones de teclado sobre el input para enviar al presionar la tecla Enter
+  document.getElementById('cmd-input').addEventListener('keypress', e => {
+    if (e.key === 'Enter') enviarPersonalizado();
+  });
+
+  /**
+   * Función crítica que realiza peticiones paralelas (Promise.all) de tipo GET
+   * hacia las rutas /logs y /instrucciones para actualizar toda la interfaz.
+   */
+  async function cargarDatos() {
+    try {
+      // Descarga de forma simultánea los logs de MongoDB y el arreglo de comandos
+      const [resLogs, resInst] = await Promise.all([fetch('/logs'), fetch('/instrucciones')]);
+      // Convierte las respuestas HTTP crudas a objetos JSON nativos
+      todosLogs = await resLogs.json();
+      const instrucciones = await resInst.json();
+      
+      // Actualiza los elementos estéticos e indicadores de estado de conectividad exitosa
+      document.getElementById('dot').style.background = '#3B6D11';
+      document.getElementById('status-text').textContent = 'conectado';
+      
+      // Inyección de cálculos matemáticos sobre los arrays para actualizar contadores
+      document.getElementById('m-total').textContent = todosLogs.length;
+      document.getElementById('m-mov').textContent = todosLogs.filter(l => l.tipo && l.tipo.includes('movimiento')).length;
+      document.getElementById('m-err').textContent = todosLogs.filter(l => l.tipo && l.tipo.includes('error')).length;
+      document.getElementById('m-last').textContent = todosLogs.length ? formatTiempo(todosLogs[0].fecha) : '—';
+      
+      // Aplica el filtro en pantalla que se encuentre seleccionado al momento de la recarga automática
+      const filtrados = filtroActivo === 'todos' ? todosLogs : todosLogs.filter(l => l.tipo && l.tipo.toLowerCase().includes(filtroActivo));
+      // Redibuja los componentes dinámicos con la información fresca de la base de datos
+      renderLogs(filtrados);
+      renderInstrucciones(instrucciones);
+    } catch(e) {
+      // Cambia el color del círculo a rojo e informa el fallo si la API no responde
+      document.getElementById('dot').style.background = '#A32D2D';
+      document.getElementById('status-text').textContent = 'error de conexión';
+    }
+  }
+
+  // Invoca la descarga de datos inmediatamente al renderizar la página web por primera vez
+  cargarDatos();
+  // Configura un hilo repetitivo que actualiza los datos de la pantalla de forma automática cada 5 segundos
+  setInterval(cargarDatos, 5000);
+</script>
+</body>
+</html>
