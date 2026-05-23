@@ -171,6 +171,8 @@ http://localhost:3000/health
 
 ---
 
+![Ejemplo de uso](https://github.com/asarazua/perro-robot/blob/8f803e49ee2c514471a84f9f1f44b60b889dcb30/uso.jpeg)
+
 ## 🔄 Flujo de Funcionamiento
 
 1. El robot ejecuta una acción.
