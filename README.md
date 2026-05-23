@@ -67,7 +67,7 @@ robot-server/
     ├── server.js
     └── dashboard.html
 ```
-![Estructura del proyecto en VSCode]((https://github.com/asarazua/perro-robot/blob/692e23294d893925a56aba3a42762688982786d2/Estructura.jpeg))
+![Estructura del proyecto en VSCode](https://github.com/asarazua/perro-robot/blob/692e23294d893925a56aba3a42762688982786d2/Estructura.jpeg)
 
 ### 📄 Descripción de Archivos
 
